@@ -1,5 +1,5 @@
-// import dotenv from "dotenv";
-// dotenv.config({path: "./env"})
+import dotenv from "dotenv";
+dotenv.config({path: "./env"})
 
 import connectDB from "./db/index.js"
 import app from "./app.js"
@@ -35,8 +35,8 @@ const app = express()
       throw e;
     })
 
-    app.listen(port, ()=>{
-      console.log(`App listine on port ${port}`)
+    app.listen(process.env.PORT, ()=>{
+      console.log(`App listine on port ${process.env.PORT}`)
     })
     
   } catch (error) {
@@ -44,4 +44,4 @@ const app = express()
     throw error
   }
 })()
-  */
+*/

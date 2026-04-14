@@ -19,4 +19,14 @@ app.use(express.static("public"))
 // For store and access cookie in users browser 
 app.use(cookieParser())
 
+
+
+// Router import
+import userRoute from "./routes/user.routes.js"
+
+// Router declaration 
+app.use("/api/v1/users", userRoute);
+
+
+
 export default app;

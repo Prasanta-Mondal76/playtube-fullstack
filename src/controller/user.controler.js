@@ -3,8 +3,8 @@ import { ApiError } from "../utils/apiError.js";
 import { User } from "../models/user.model.js";
 import { uploadOnCloudinary } from "../utils/cloudinary.js";
 import { ApiResponse } from "../utils/apiResponse.js";
-import fs from "fs";
 
+// Register User 
 const registerUser = asyncHandler(async (req, res) => {
   // Get user details from frontend
   // Validation of details | All details are correct or not, email format, any required fild is empty or not
@@ -43,7 +43,7 @@ const registerUser = asyncHandler(async (req, res) => {
     ]
   })
 
-  if (isExists) throw new ApiError(409, "Username or Email already exists.");
+  if (isExists) throw new ApiError(409, "Username or Email already exists. Please login.");
 
   // Checking for images , Checking for avatar
   // console.log("-------------------------------Multer req.body --------------------------------- \n ",req.body);
@@ -83,4 +83,105 @@ const registerUser = asyncHandler(async (req, res) => {
 
 })
 
-export { registerUser };
+
+// Login User
+const loginUser = asyncHandler(async(req, res) => {
+  // Get data from frontend or req.body
+  // Validatiion of data | email or username and passowrd
+  // Check user exist or not by email or username 
+  // If user exist then compare password is correct or not | using bcryptjs
+  // If password is correct then generate accessToken and refreshToken
+  // Save refreshToken in DB
+  // Return response (accessToken and user details except user password and refreshToken details)
+  // console.log("Login API hit: ", req.body)
+
+  // Get data from frontend or req.body
+  const { username, password, email } = req.body
+
+  // Validatiion of data | email or username and passowrd
+  // Check username or email field is empty
+  if(!username && !email) throw new ApiError(400, "Username or Email is required.")
+
+  // Check user exist or not by email or username
+  // Find user by email or username
+  const user = await User.findOne({
+    $or: [ {email}, {username}]
+  })
+  if(!user) throw new ApiError(404, "User does not exixt. Please register first.")
+
+  // If user exist then compare password is correct or not | using bcryptjs
+  const isMatch = await user.isPasswordCorrect(password);
+  if(!isMatch) throw new ApiError(401, "Invalid credentials. Please try again.")
+
+  // If password is correct then generate accessToken and refreshToken
+  const accessToken = await user.generateAccessToken();
+  const refreshToken = await user.generateRefreshToken();
+
+  // Save refreshToken in DB
+  user.refreshToken = refreshToken;
+  await user.save({validateBeforeSave: false});
+
+  // Creating a new object to send in response After removing password and refreshToken from user details
+
+  // // Method 1: Using db query.
+  // const loggedInUser = User.findById(user._id).select("-password -refreshToken");
+
+  // Method 2: By copying user object.
+  const loggedInUser = user.toObject(); // Shallow Copy
+  delete loggedInUser.password;
+  delete loggedInUser.refreshToken; 
+
+  const options = {
+    httpOnly: true,
+    secure: true
+  }
+
+
+  // Return response (accessToken and user details except user password and refreshToken details)
+  return res.status(200)
+            .cookie("accessToken", accessToken, options)
+            .cookie("refreshToken", refreshToken, options)
+            .json(
+              new ApiResponse(
+                200,
+                {
+                  user:{
+                    loggedInUser, 
+                    accessToken,
+                    refreshToken
+                  }
+                },
+                "User logged in successfully."
+              )
+            )
+})
+
+
+// Logout User
+const logoutUser = asyncHandler( async (req, res)=>{
+  // To logout a user we need reference of the user and that's why we create a custom middleware name: auth.middleert.Js
+  
+  // Find user and remove refreshToken field from model. So that user have no longer access of login.
+  await User.findByIdAndUpdate(
+    req.user._id,
+    {
+      $set:{
+        refreshToken: null
+      }
+    }
+  );
+
+  // Secure Options
+  const options = {
+    httpOnly: true,
+    secure: true
+  }
+
+  // Remove cookies and rend response.
+  res.status(200)
+      .clearCookie("accessToken", options)
+      .clearCookie("refreshToken", options)
+      .json(new ApiResponse(200, {}, "Logged Out."))
+
+})
+export { registerUser, loginUser, logoutUser };

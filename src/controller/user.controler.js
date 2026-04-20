@@ -27,10 +27,10 @@ const checkNameAndEmailFormat = async (fullName, email) =>{
   return {trimFullName, trimEmail};
 }
 
-const passwordValidation = (pass, len) => {
+const passwordValidation = (pass, len = 8) => {
   // const regex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[@$!%*?&])\S{8,}$/;
-  const regex = new RegExp(`^(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[@$!%*?&])\S{${len},}$`)
-  if(!regex.test(regex)) throw new ApiError(400, `Password must be >=${len} and contains upparcase. lowercase, numbers and spetial characters.`)
+  const regex = new RegExp(`^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[^A-Za-z0-9]).{${len},}$`)
+  if(!regex.test(pass)) throw new ApiError(400, `Password must be >=${len} and contains uppercase. lowercase, numbers and special characters.`)
   return;
 }
 
@@ -60,8 +60,8 @@ const registerUser = asyncHandler(async (req, res) => {
   // fullName and email validation
   const {trimFullName, trimEmail} =  await checkNameAndEmailFormat(fullName, email);
 
-  // Strong Password Validation
-  passwordValidation(password);
+  // Strong Password Validation. Second perameter is the minimum length of the password
+  passwordValidation(password, 6);
 
   //Checking User already exists or not
   const isExists = await User.findOne({
@@ -278,7 +278,7 @@ const changeCurrentPassword = asyncHandler ( async (req, res) => {
   console.log("Verify user details:(without password and refreshtoken) ",req.user);
 
   // Strong passworc validation
-  passwordValidation(newPassword);
+  passwordValidation(newPassword, 6);
 
   const currentUser = await User.findById(req.user._id);
 

@@ -8,7 +8,8 @@ import
   getCurrentUser, 
   updateData,
   updateAvatar,
-  updateCoverImage
+  updateCoverImage,
+  getUserChannelDetails
 } from "../controller/user.controler.js";
 
 import {upload} from "../middlewares/multer.middleware.js"
@@ -48,4 +49,6 @@ router.route("/update-user").post(verifyJWT, updateData)
 router.route("/update-avatar").post(verifyJWT, upload.single("avatar"), updateAvatar)
 router.route("/update-coverImage").post(verifyJWT, upload.single("coverImage"), updateCoverImage)
 
+// Channel details rout
+router.route("/channel/:username").post(verifyJWT, getUserChannelDetails)
 export default router;

@@ -381,6 +381,79 @@ const updateCoverImage = asyncHandler ( async (req, res) => {
   res.status(200).json(new ApiResponse(200, resObj, "Covered Image Updated Successfully."))
 })
 
+// User channel details 
+const getUserChannelDetails = asyncHandler( async(req, res) => {
+  const {username} = req.prams;
+
+  if(!username?.length) throw new ApiError(404, "Username Not FOund.")
+
+  const user = await User.aggregate([
+    {
+      $match:{
+        username: username.trim().toLowerCase()
+      }
+    },
+    {
+      $lookup:{
+        from: "subscriptions",
+        localField: "_id",
+        foreignField: "subscriber",
+        as: "subscribers"
+      }
+    },
+    {
+      $lookup:{
+        from: "subscriptions",
+        localField: "_id",
+        foreignField: "channel",
+        as: "subscribed"
+      }
+    },
+    {
+      $addFields:{
+        subscribersCount: {
+          $size: "$subscribers"
+        },
+        subscribedCount: {
+          $size: "$subscribed"
+        },
+        isSubscribed:{
+          $cond:{
+            if: {
+              $in: [req.user?._id, "$subscribers.subscriber"]
+            },
+            then: true,
+            else: false
+          }
+        }
+      }
+    },
+    {
+      $project:{
+        username:1,
+        email:1,
+        fullName:1,
+        avatar:1,
+        coverImage:1,
+        subscribersCount:1,
+        subscribedCount:1,
+        isSubscribed:1,
+      }
+    }
+  ])
+
+  if(!user) throw new ApiError(404, "User doesn't exists.")
+
+  console.log("User '",user.fullName,"' Details: ",user);
+
+  return req.status(200)
+            .json(new ApiResponse(
+              200,
+              user,
+              "User Details Fatched Successfully."
+            ))
+})
+
 
 export 
 { 
@@ -393,5 +466,5 @@ export
   updateData,
   updateAvatar,
   updateCoverImage,
-
+  getUserChannelDetails
 };

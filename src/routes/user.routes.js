@@ -44,14 +44,14 @@ router.route("/refresh-token").post(renewAccessRefreshToken)
 // Change password
 router.route("/change-password").post(verifyJWT, changeCurrentPassword)
 
-router.route("/current-user").post(verifyJWT, getCurrentUser)
-router.route("/update-user").post(verifyJWT, updateData)
+router.route("/current-user").get(verifyJWT, getCurrentUser)
+router.route("/update-user").patch(verifyJWT, updateData)
 
-router.route("/update-avatar").post(verifyJWT, upload.single("avatar"), updateAvatar)
-router.route("/update-coverImage").post(verifyJWT, upload.single("coverImage"), updateCoverImage)
+router.route("/update-avatar").patch(verifyJWT, upload.single("avatar"), updateAvatar)
+router.route("/update-coverImage").patch(verifyJWT, upload.single("coverImage"), updateCoverImage)
 
 // Channel details route
-router.route("/channel/:username").post(verifyJWT, getUserChannelDetails)
+router.route("/channel/:username").get(verifyJWT, getUserChannelDetails)
 // Watch History route
-router.route("/channel/history").post(verifyJWT, getWatchHistory)
+router.route("/channel/history").get(verifyJWT, getWatchHistory)
 export default router;

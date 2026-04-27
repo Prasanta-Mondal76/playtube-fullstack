@@ -11,7 +11,7 @@ export const verifyJWT = asyncHandler ( async (req, res, next) => {
     // Finding the access token
     const token = req.cookies?.accessToken || req.header("Authorization")?.replace("Bearer", "").trim();
 
-    if(!token) throw new ApiError(404, "Unauthorized Request.");
+    if(!token) throw new ApiError(401, "Unauthorized Request.");
 
     // Verifying the access token is valid or not. 
     // If user is valid then it returns A object with the values we set while generating the access token.(in user.model)
@@ -25,10 +25,10 @@ export const verifyJWT = asyncHandler ( async (req, res, next) => {
     }
 
     // If user add Object field in request. So now everyone can access it.
-    req.user = user; // Adding a new field "user" in requesi file. 
+    req.user = user; // Adding a new field "user" in request file. 
 
     next();
   } catch (error) {
-    throw new ApiError( 401 , "Error in verify user process.");
+    throw new ApiError( 401 , error?.message || "Error in verify user process.");
   }
 })

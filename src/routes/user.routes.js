@@ -10,7 +10,9 @@ import
   updateAvatar,
   updateCoverImage,
   getUserChannelDetails,
-  getWatchHistory
+  getWatchHistory,
+  forgotUserPassword,
+  resetPassword,
 } from "../controller/user.controler.js";
 
 import {upload} from "../middlewares/multer.middleware.js"
@@ -54,4 +56,8 @@ router.route("/update-coverImage").patch(verifyJWT, upload.single("coverImage"),
 router.route("/channel/:username").get(verifyJWT, getUserChannelDetails)
 // Watch History route
 router.route("/history").get(verifyJWT, getWatchHistory)
+
+router.route("/forgot-password").post(forgotUserPassword)
+router.route("/reset-password/:token").post(resetPassword)
+
 export default router;

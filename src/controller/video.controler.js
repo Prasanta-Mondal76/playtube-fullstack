@@ -147,8 +147,10 @@ const getAllVideos = asyncHandler(async (req, res) => {
 
 const updateVideoDetails = asyncHandler(async (req, res) => {
   const { videoId } = req.params
-  //TODO: update video details like title, description, thumbnail
-  if (!videoId) throw new ApiError(400, "No VideoId Provided. ")
+  // update video details like title, description, thumbnail
+  if (!mongoose.Types.ObjectId.isValid(videoId)) {
+    throw new ApiError(400, "Invalid Video ID");
+  }
   const { thumbnail, title, description } = req.body
 
   const updateFields = {};
@@ -179,9 +181,67 @@ const updateVideoDetails = asyncHandler(async (req, res) => {
   return res.status(200).json(new ApiResponse(200, video, "Video Details Updated Successfully."))
 })
 
+const togglePublishStatus = asyncHandler(async (req, res) => {
+  const { videoId } = req.params
+  if (!mongoose.Types.ObjectId.isValid(videoId)) {
+    throw new ApiError(400, "Invalid Video ID");
+  }
+
+  const video = await Video.findOne({
+    _id: videoId,
+    owner: req.user._id
+  })
+
+  if (!video) throw new ApiError(404, "Video Not Found or Unauthorized Video Access.")
+
+  video.isPublished = !video.isPublished
+  await video.save({ validateBeforeSave: false })
+
+  return res.status(200).json(new ApiResponse(200, video, "Toggle successfull."))
+})
+
+
+const deleteVideo = asyncHandler(async (req, res) => {
+  const { videoId } = req.params
+  if (!mongoose.Types.ObjectId.isValid(videoId)) {
+    throw new ApiError(400, "Invalid Video ID");
+  }
+
+  const video = await Video.findOneAndDelete({
+    _id: videoId,
+    owner: req.user._id
+  })
+  if (!video) throw new ApiError(404, "Video Not Found or Unauthorized Video Access.")
+
+  return res.status(200).json(new ApiResponse(200, video, "Video deleted successfully."))
+})
+
+
+const getVideoById = asyncHandler(async (req, res) => {
+  const { videoId } = req.params
+  if (!mongoose.Types.ObjectId.isValid(videoId)) {
+    throw new ApiError(400, "Invalid Video ID");
+  }
+
+  const video = await Video.findOne({
+    _id: videoId,
+    $or:[
+      { isPublished : true },
+      
+      // Video owner can access of his own unpublished videos also.
+      { owner: req.user?._id}
+    ]
+  })
+  if (!video) throw new ApiError(404, "Video Not Found.")
+
+  return res.status(200).json(new ApiResponse(200, video, "Video fatched successfully."))
+})
 
 export {
   publishAVideo,
   getAllVideos,
   updateVideoDetails,
+  togglePublishStatus,
+  deleteVideo,
+  getVideoById
 }

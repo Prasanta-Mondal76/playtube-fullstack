@@ -1,9 +1,5 @@
-import { ApiError } from "../utils/apiError.js";
-import { ApiResponse } from "../utils/apiResponse.js";
+import { ApiError, ApiResponse, asyncHandler, uploadOnCloudinary, deleteLocalTempFiles } from "../utils/index.js"
 import { Video } from "../models/video.model.js";
-import { asyncHandler } from "../utils/asyncHandler.js";
-import { uploadOnCloudinary } from "../utils/cloudinary.js";
-import { deleteLocalTempFiles } from "../utils/deleteTempFiles.js";
 import mongoose from "mongoose";
 
 
@@ -40,9 +36,8 @@ const publishAVideo = asyncHandler(async (req, res) => {
       isPublished: isPublished ?? true
     })
 
-    if (!video) throw new ApiError(500, "Error in publishing video.")
 
-    return res.status(200).json(new ApiResponse(200, video, "Video Uploaded Successfully."))
+    return res.status(201).json(new ApiResponse(201, video, "Video Uploaded Successfully."))
   } catch (error) {
     deleteLocalTempFiles(req);
     throw error;
@@ -172,7 +167,7 @@ const updateVideoDetails = asyncHandler(async (req, res) => {
       $set: updateFields
     },
     {
-      after: true,
+      returnDocument: "after"
     }
   );
 

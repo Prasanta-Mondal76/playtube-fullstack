@@ -1,13 +1,8 @@
-import { asyncHandler } from "../utils/asyncHandler.js"
-import { ApiError } from "../utils/apiError.js";
+import { ApiError, ApiResponse, asyncHandler, deleteFromCloudinary, uploadOnCloudinary, sendMail, deleteLocalTempFiles} from "../utils/index.js"
 import { User } from "../models/user.model.js";
-import { deleteFromCloudinary, uploadOnCloudinary } from "../utils/cloudinary.js";
-import { ApiResponse } from "../utils/apiResponse.js";
 import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
 import crypto from "crypto";
-import { sendMail } from "../utils/sendMail.js";
-import { deleteLocalTempFiles } from "../utils/deleteTempFiles.js"
 
 
 const checkNameAndEmailFormat =  (fullName, email) => {

@@ -9,7 +9,7 @@ import
   togglePublishStatus,
   deleteVideo,
   getVideoById
-} from "../controller/video.controler.js"
+} from "../controller/video.controller.js"
 import { upload } from "../middlewares/multer.middleware.js";
 
 const router = Router()

@@ -9,7 +9,7 @@ import {
   getUserPlaylists,
   getPlaylistById,
 
-} from "../controller/playlist.controler.js"
+} from "../controller/playlist.controller.js"
 
 const router = Router()
 

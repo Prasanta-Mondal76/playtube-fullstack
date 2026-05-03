@@ -13,7 +13,7 @@ import
   getWatchHistory,
   forgotUserPassword,
   resetPassword,
-} from "../controller/user.controler.js";
+} from "../controller/user.controller.js";
 
 import {upload} from "../middlewares/multer.middleware.js"
 import { verifyJWT } from "../middlewares/auth.middleware.js";

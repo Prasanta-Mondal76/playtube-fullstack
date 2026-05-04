@@ -26,6 +26,7 @@ import userRoute from "./routes/user.routes.js"
 import videoRouter from "./routes/video.routes.js"
 import playlistRouter from "./routes/playlist.routes.js"
 import tweetRouter from "./routes/tweet.routes.js"
+import commentRouter from "./routes/comment.routes.js"
 
 // Router declaration for user route
 app.use("/api/v1/users", userRoute);
@@ -38,6 +39,10 @@ app.use("/api/v1/playlists", playlistRouter);
 
 // Router declaration for tweet route
 app.use("/api/v1/tweets", tweetRouter);
+
+// Router declaration for comments route
+app.use("/api/v1/comments", commentRouter);
+
 
 
 

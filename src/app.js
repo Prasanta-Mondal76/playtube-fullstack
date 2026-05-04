@@ -22,12 +22,14 @@ app.use(cookieParser())
 
 
 // Router import
-import userRoute from "./routes/user.routes.js"
+import userRouter from "./routes/user.routes.js"
 import videoRouter from "./routes/video.routes.js"
 import playlistRouter from "./routes/playlist.routes.js"
 import tweetRouter from "./routes/tweet.routes.js"
 import commentRouter from "./routes/comment.routes.js"
 import likeRouter from "./routes/like.routes.js"
+import subscriptionRouter from "./routes/subscription.routes.js"
+
 
 // Router declaration for user route
 app.use("/api/v1/users", userRoute);
@@ -46,6 +48,9 @@ app.use("/api/v1/comments", commentRouter);
 
 // Router declaration for like route
 app.use("/api/v1/likes", likeRouter);
+
+// Router declaration for like route
+app.use("/api/v1/subscriptions", subscriptionRouter);
 
 
 

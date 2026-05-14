@@ -10,7 +10,7 @@ const addComment = asyncHandler(async (req, res) => {
   if (!mongoose.Types.ObjectId.isValid(videoId)) throw new ApiError(400, "Invalid video ID.")
   if (!content?.trim()) throw new ApiError(400, "Invalid comment.")
   const comment = await Comment.create({
-    content: content.trim(),
+    content,
     video: videoId,
     owner: req.user._id
   })
@@ -31,7 +31,7 @@ const updateComment = asyncHandler(async (req, res) => {
     },
     {
       $set: {
-        content: content.trim()
+        content
       }
     },
     {

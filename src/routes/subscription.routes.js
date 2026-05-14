@@ -3,8 +3,7 @@ import { verifyJWT } from "../middlewares/auth.middleware.js";
 
 import { 
   toggleSubscription,
-  getChannelSubscriberCount,
-  getSubscribedChannelCount,
+  getSubscriptionStats
 } from "../controller/subscription.controller.js"
 
 const router = Router()
@@ -12,7 +11,6 @@ const router = Router()
 router.use(verifyJWT)
 
 router.route("/channel/:channelId").post(toggleSubscription)
-router.route("/subscribers/:channelId").get(getChannelSubscriberCount)
-router.route("/sybscribed/:subscriberId").get(getSubscribedChannelCount)
+router.route("/channel/:channelId/stats").get(getSubscriptionStats)
 
 export default router;

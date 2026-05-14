@@ -10,7 +10,6 @@ import
   deleteVideo,
   getVideoById,
   recordVideoView,
-  getVideoViewCount
 } from "../controller/video.controller.js"
 import { upload } from "../middlewares/multer.middleware.js";
 
@@ -39,7 +38,5 @@ router.route("/update-video-details/:videoId").patch(verifyJWT, updateVideoDetai
 router.route("/delete-video/:videoId").delete(verifyJWT, deleteVideo)
 router.route("/toggle-published/:videoId").patch(verifyJWT, recordVideoView);
 router.route("/views/:videoId").post(recordVideoView);
-router.route("/total-views/:videoId").get(getVideoViewCount)
-
 
 export default router;

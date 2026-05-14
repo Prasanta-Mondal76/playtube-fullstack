@@ -5,7 +5,7 @@ import { uploadOnCloudinary, deleteFromCloudinary } from "./cloudinary.js"
 import { sendMail } from "./sendMail.js";
 import { deleteLocalTempFiles } from "./deleteTempFiles.js";
 import syncViewsToMongoDB from "./viewSync.corn.js"
-
+import { syncAVideoViewsToMongoDB } from "./syncSingleVideoViews.js"
 export {
   ApiError,
   ApiResponse,
@@ -15,4 +15,5 @@ export {
   sendMail,
   deleteLocalTempFiles,
   syncViewsToMongoDB,
+  syncAVideoViewsToMongoDB
 }

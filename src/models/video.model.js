@@ -28,6 +28,10 @@ const videoSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
+  likes:{
+    type: Number,
+    default: 0
+  },
   isPublished:{
     type: Boolean,
     default: true,
@@ -36,5 +40,6 @@ const videoSchema = new mongoose.Schema({
 }, {timestamps: true})
 
 videoSchema.plugin(mongooseAggregatePaginate)
+videoSchema.index({ owner:1, createdAt: -1})
 
 export const Video = mongoose.model("Video", videoSchema)

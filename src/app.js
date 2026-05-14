@@ -29,6 +29,7 @@ import tweetRouter from "./routes/tweet.routes.js"
 import commentRouter from "./routes/comment.routes.js"
 import likeRouter from "./routes/like.routes.js"
 import subscriptionRouter from "./routes/subscription.routes.js"
+import dashboardRouter from "./routes/dashboard.routes.js"
 // Redis code run
 import redis from "./db/redis.js"
 
@@ -51,8 +52,11 @@ app.use("/api/v1/comments", commentRouter);
 // Router declaration for like route
 app.use("/api/v1/likes", likeRouter);
 
-// Router declaration for like route
+// Router declaration for subscription route
 app.use("/api/v1/subscriptions", subscriptionRouter);
+
+// Router declaration for dashboard route
+app.use("/api/v1/dashboard", dashboardRouter);
 
 
 

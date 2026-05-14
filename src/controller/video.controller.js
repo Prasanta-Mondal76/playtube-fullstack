@@ -1,7 +1,14 @@
-import { ApiError, ApiResponse, asyncHandler, uploadOnCloudinary, deleteLocalTempFiles } from "../utils/index.js"
+import {
+  ApiError, ApiResponse, asyncHandler,
+  uploadOnCloudinary, deleteLocalTempFiles, deleteFromCloudinary,
+  syncAVideoViewsToMongoDB
+} from "../utils/index.js"
 import { Video } from "../models/video.model.js";
 import mongoose, { isValidObjectId } from "mongoose";
 import redisClient from "../db/redis.js";
+import { User } from "../models/user.model.js";
+import { Like } from "../models/like.model.js";
+import { Comment } from "../models/comment.model.js";
 
 
 
@@ -9,6 +16,7 @@ const publishAVideo = asyncHandler(async (req, res) => {
   try {
     const { title, description, isPublished } = req.body
 
+    if (!req.user?._id) throw new ApiError(400, "Please login first.")
     if (!req.files || !req.files?.videoFile?.length) throw new ApiError(400, "Video Files is required.")
 
     //Validation of details
@@ -36,10 +44,17 @@ const publishAVideo = asyncHandler(async (req, res) => {
       duration,
       views: 0,
       isPublished: isPublished ?? true,
-      owner: req.user?._id
+      owner: req.user._id
     })
 
-
+    if (video) {
+      await User.findByIdAndUpdate(video.owner, {
+        $inc: {
+          totalVideos: 1,
+          totalPublishedVideos: video.isPublished ? 1 : 0
+        }
+      })
+    }
     return res.status(201).json(new ApiResponse(201, video, "Video Uploaded Successfully."))
   } catch (error) {
     deleteLocalTempFiles(req);
@@ -180,23 +195,63 @@ const updateVideoDetails = asyncHandler(async (req, res) => {
 })
 
 const togglePublishStatus = asyncHandler(async (req, res) => {
-  const { videoId } = req.params
-  if (!mongoose.Types.ObjectId.isValid(videoId)) {
-    throw new ApiError(400, "Invalid Video ID");
+
+  const { videoId } = req.params;
+
+  if (!isValidObjectId(videoId)) throw new ApiError(400, "Invalid Video ID");
+
+  const session = await mongoose.startSession();
+
+  session.startTransaction();
+
+  try {
+    const video = await Video.findOne({
+      _id: videoId,
+      owner: req.user._id
+    }).session(session);
+
+    if (!video) {
+      throw new ApiError(
+        404,
+        "Video Not Found or Unauthorized Video Access."
+      );
+    }
+
+    video.isPublished = !video.isPublished;
+
+    await video.save({ session });
+
+    await User.findByIdAndUpdate(
+      video.owner,
+      {
+        $inc: {
+          totalPublishedVideos:
+            video.isPublished ? 1 : -1
+        }
+      },
+      { session }
+    );
+
+    await session.commitTransaction();
+
+    return res.status(200).json(
+      new ApiResponse(
+        200,
+        video,
+        "Toggle successful."
+      )
+    );
+
+  }
+  catch (error) {
+    await session.abortTransaction();
+    throw new ApiError(500, "Toggle publish status failed.");
+  }
+  finally {
+    await session.endSession();
   }
 
-  const video = await Video.findOne({
-    _id: videoId,
-    owner: req.user._id
-  })
-
-  if (!video) throw new ApiError(404, "Video Not Found or Unauthorized Video Access.")
-
-  video.isPublished = !video.isPublished
-  await video.save({ validateBeforeSave: false })
-
-  return res.status(200).json(new ApiResponse(200, video, "Toggle successfull."))
-})
+});
 
 
 const deleteVideo = asyncHandler(async (req, res) => {
@@ -205,13 +260,70 @@ const deleteVideo = asyncHandler(async (req, res) => {
     throw new ApiError(400, "Invalid Video ID");
   }
 
-  const video = await Video.findOneAndDelete({
-    _id: videoId,
-    owner: req.user._id
-  })
-  if (!video) throw new ApiError(404, "Video Not Found or Unauthorized Video Access.")
+  // Sync Views to DB before deleted.
+  await syncAVideoViewsToMongoDB(videoId)
 
-  return res.status(200).json(new ApiResponse(200, video, "Video deleted successfully."))
+  const session = await mongoose.startSession()
+  try {
+    session.startTransaction()
+    const video = await Video.findOneAndDelete({
+      _id: videoId,
+      owner: req.user._id
+    }).session(session)
+    if (!video) throw new ApiError(404, "Video Not Found or Unauthorized Video Access.")
+
+    const comments = await Comment.find(
+      { video: videoId },
+      "_id",
+      { session }
+    )
+    // make a array of comments by takins it's  _id
+    const commentIds = comments.map(c => c._id)
+
+    await Promise.all([
+      // decrease video count
+      User.findByIdAndUpdate(video.owner, {
+        $inc: {
+          totalVideos: -1,
+          totalPublishedVideos: video.isPublished ? -1 : 0
+        }
+      }, { session }),
+
+      // Delete video likes
+      Like.deleteMany({
+        video: videoId
+      }, { session }),
+
+      // Delete comments of the video
+      Comment.deleteMany({
+        video: videoId
+      }, { session }),
+
+      // Delete Likes of deleted comments
+      Like.deleteMany({
+        comment: { $in: commentIds }
+      }, { session }),
+    ])
+
+    await session.commitTransaction()
+    // AFTER successful commit delete video and thumbnail from cloudinary
+    await Promise.all([
+      deleteFromCloudinary(video.videoFile),
+      deleteFromCloudinary(video.thumbnail)
+    ])
+    return res.status(200).json(new ApiResponse(200, video, "Video deleted successfully."))
+  }
+  catch (error) {
+    await session.abortTransaction()
+    throw new ApiError(
+      error.statusCode || 500,
+      error.message || "Failed to delete video"
+    )
+  }
+  finally {
+    await session.endSession()
+  }
+
 })
 
 
@@ -306,18 +418,6 @@ const recordVideoView = asyncHandler(async (req, res) => {
   ))
 })
 
-const getVideoViewCount = asyncHandler(async (req, res) => {
-  const { videoId } = req.params;
-  if (!isValidObjectId(videoId)) throw new ApiError(400, "Invalid video ID")
-
-  const views = Number(await redisClient.get(`video:${videoId}:views`)) || 0
-  return res.status(200).json(new ApiResponse(
-    200,
-    { totalViews: views },
-    "Total views fetched successfully."
-  ))
-
-})
 export {
   publishAVideo,
   getAllVideos,
@@ -326,5 +426,4 @@ export {
   deleteVideo,
   getVideoById,
   recordVideoView,
-  getVideoViewCount
 }

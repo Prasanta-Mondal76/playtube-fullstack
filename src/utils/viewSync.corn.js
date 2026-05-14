@@ -1,4 +1,5 @@
 import redisClient from "../db/redis.js"
+import { User } from "../models/user.model.js"
 import { Video } from "../models/video.model.js"
 
 const syncViewsToMongoDB = async () => {
@@ -20,14 +21,26 @@ const syncViewsToMongoDB = async () => {
         await redisClient.get(`video:${videoId}:views`)
       ) || 0
 
-      // Update MongoDB
-      await Video.findByIdAndUpdate(
+      // Update MongoDB Video Model
+      const oldVid = await Video.findByIdAndUpdate(
         videoId,
         {
           $set: { views }
+        },
+        {
+          returnDocument: 'before'
         }
       )
 
+      // Update MongoDB User Model
+      await User.findByIdAndUpdate(
+        oldVid.owner,
+        {
+          $inc: {
+            totalViews: (views - oldVid.views)
+          }
+        }
+      )
       // Remove dirty flag
       await redisClient.sRem("dirty:videos", videoId)
     }

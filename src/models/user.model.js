@@ -3,7 +3,7 @@ import jwt from "jsonwebtoken"
 import bcrypt from "bcrypt"
 
 const userSchema = new mongoose.Schema({
-  username:{
+  username: {
     type: String,
     required: true,
     unique: true,
@@ -11,51 +11,80 @@ const userSchema = new mongoose.Schema({
     trim: true,
     index: true,
   },
-  email:{
+  email: {
     type: String,
     required: true,
     unique: true,
     lowercase: true,
     trim: true,
   },
-  fullName:{
+  fullName: {
     type: String,
     required: true,
     trim: true,
     index: true
   },
-  avatar:{
+  avatar: {
     type: String,
     required: true
   },
-  coverImage:{
+  coverImage: {
     type: String,
   },
-  watchHistory:[
+  watchHistory: [
     {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Video"
     }
   ],
-  password:{
+  password: {
     type: String,
     required: [true, "password is required"]
   },
-  refreshToken:{
+  refreshToken: {
     type: String,
   },
-  forgotPasswordToken:{
+  forgotPasswordToken: {
     type: String,
   },
-  forgotPasswordExpiry:{
+  forgotPasswordExpiry: {
     type: Date,
   },
 
-  
-}, {timestamps: true})
+  totalViews: {
+    type: Number,
+    default: 0
+  },
+
+  totalVideos: {
+    type: Number,
+    default: 0
+  },
+
+  totalPublishedVideos: {
+    type: Number,
+    default: 0
+  },
+
+  totalSubscribers: {
+    type: Number,
+    default: 0
+  },
+
+  totalSubscribedChannels: {
+    type: Number,
+    default: 0
+  },
+
+  totalVideoLikes: {
+    type: Number,
+    default: 0
+  }
+
+}, { timestamps: true })
 
 userSchema.pre("save", async function () {
-  if(!this.isModified("password")) return ;
+  if (!this.isModified("password")) return;
 
   this.password = await bcrypt.hash(this.password, 10);
 })

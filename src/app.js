@@ -30,6 +30,7 @@ import commentRouter from "./routes/comment.routes.js"
 import likeRouter from "./routes/like.routes.js"
 import subscriptionRouter from "./routes/subscription.routes.js"
 import dashboardRouter from "./routes/dashboard.routes.js"
+import healthCheckRouter from "./routes/healthCheck.routes.js"
 // Redis code run
 import redis from "./db/redis.js"
 
@@ -57,6 +58,9 @@ app.use("/api/v1/subscriptions", subscriptionRouter);
 
 // Router declaration for dashboard route
 app.use("/api/v1/dashboard", dashboardRouter);
+
+// Router declaration for HealthCheck route
+app.use("/api/v1/healthCheck", healthCheckRouter);
 
 
 

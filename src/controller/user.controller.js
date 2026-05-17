@@ -1,11 +1,12 @@
-import { ApiError, ApiResponse, asyncHandler, deleteFromCloudinary, uploadOnCloudinary, sendMail, deleteLocalTempFiles} from "../utils/index.js"
+import { ApiError, ApiResponse, asyncHandler, deleteFromCloudinary, uploadOnCloudinary, sendMail, deleteLocalTempFiles } from "../utils/index.js"
 import { User } from "../models/user.model.js";
 import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
 import crypto from "crypto";
+import redisClient from "../db/redis.js"
 
 
-const checkNameAndEmailFormat =  (fullName, email) => {
+const checkNameAndEmailFormat = (fullName, email) => {
   const trimFullName = fullName?.trim()
   const trimEmail = email?.trim()
   if (trimFullName) {
@@ -24,7 +25,7 @@ const checkNameAndEmailFormat =  (fullName, email) => {
   return { trimFullName, trimEmail };
 }
 
-const passwordValidation = (pass, len = 8) => {
+const storngPasswordValidation = (pass, len = 8) => {
   // const regex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[@$!%*?&])\S{8,}$/;
   const regex = new RegExp(`^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[^A-Za-z0-9]).{${len},}$`)
   if (!regex.test(pass)) throw new ApiError(400, `Password must be >=${len} and contains uppercase. lowercase, numbers and special characters.`)
@@ -43,24 +44,24 @@ const registerUser = asyncHandler(async (req, res) => {
     // remove password and refresh token field from response
     // check for user creation 
     // return response 
-  
+
     // Get User Details
     const { fullName, username, password, email, avatar, coverImage } = req.body
     // console.log("Email: ",email);
     // console.log("Password: ",password);
     // console.log("Avatar: ",avatar);
-  
+
     //Validation of details
     if ([fullName, username, password, email, avatar].some((item) => item === "")) {
       throw new ApiError(400, "Required fields can't be empty.")
     }
-  
+
     // fullName and email validation
-    const { trimFullName, trimEmail } =  checkNameAndEmailFormat(fullName, email);
-  
+    const { trimFullName, trimEmail } = checkNameAndEmailFormat(fullName, email);
+
     // Strong Password Validation. Second perameter is the minimum length of the password
     passwordValidation(password, 6);
-  
+
     //Checking User already exists or not
     const isExists = await User.findOne({
       $or: [
@@ -68,34 +69,34 @@ const registerUser = asyncHandler(async (req, res) => {
         { email }
       ]
     })
-  
-    
+
+
     // Checking for images , Checking for avatar
     // console.log("-------------------------------Multer req.body --------------------------------- \n ",req.body);
     // console.log("-------------------------------Multer req.files --------------------------------- \n ",req.files);
     const avatarLocalPath = req.files?.avatar?.[0]?.path;
     const coverImageLocalPath = req.files?.coverImage?.[0]?.path;
-  
+
     // If email or username exists remove the files from local storge.
     if (isExists) {
       fs.unlinkSync(avatarLocalPath)
       fs.unlinkSync(coverImageLocalPath)
       throw new ApiError(409, "Username or Email already exists. Please login.");
     }
-  
+
     //checking required image file avatar
     if (!avatarLocalPath) {
       deleteLocalTempFiles(req) //If avatar image is not present then remove all files from temp.
       throw new ApiError(400, "Avatar image is required.")
     }
-  
-  
+
+
     // Upload to cloudinary
     const avatarImage = await uploadOnCloudinary(avatarLocalPath);
     const coverImages = await uploadOnCloudinary(coverImageLocalPath);
     //Checking requird fild avatar
     if (!avatarImage) throw new ApiError(400, "Avatar file is empty.");
-  
+
     // Create User Object
     const user = await User.create({
       username: username.trim().toLowerCase(),
@@ -105,13 +106,13 @@ const registerUser = asyncHandler(async (req, res) => {
       coverImage: coverImages?.url || "",
       password,
     })
-  
+
     // Removed Password and RefreshToken field | User.findById(user._id) it find the user with the _id which db automatically add. ".select()" select all fields of user. "-password -refreshToken" means except this 2 select all others field.
     const createdUser = await User.findById(user._id).select(" -password -refreshToken");
-  
+
     // Check user creation | Checking the entry is successfully registered in DB or not
     if (!createdUser) throw new ApiError(500, "User Registration Faild.");
-  
+
     return res.status(201).json(new ApiResponse(200, createdUser, "User Registration Successfull.",))
   } catch (error) {
     deleteLocalTempFiles(req);
@@ -380,7 +381,7 @@ const updateFiles = async (file, id) => {
 const updateAvatar = asyncHandler(async (req, res) => {
   try {
     const resObj = await updateFiles(req.file, req.user._id);
-  
+
     res.status(200).json(new ApiResponse(200, resObj, "Avatar Updated Successfully."))
   } catch (error) {
     deleteLocalTempFiles(req);
@@ -392,7 +393,7 @@ const updateAvatar = asyncHandler(async (req, res) => {
 const updateCoverImage = asyncHandler(async (req, res) => {
   try {
     const resObj = await updateFiles(req.file, req.user._id);
-  
+
     res.status(200).json(new ApiResponse(200, resObj, "Covered Image Updated Successfully."))
   } catch (error) {
     deleteLocalTempFiles(req);
@@ -534,30 +535,57 @@ const getWatchHistory = asyncHandler(async (req, res) => {
 })
 
 
-// PROCESS: To perform forgot password we use to methods forgotUserPassword,resetPassword.
-// forgotUserPassword , when user click on forgot password, frontend send a POST request to (/forgot-password). It generate token, saved in db, send user a reset link or otp.
-// Then when user click on the link frontend again send a post request to (/reset-password). It validate your pass and reset your pass.
-// If it is otp based, then frontend opens a form page to put otp and varify otp then reset the password. 
+// PROCESS: Forgot password flow uses two methods: forgotUserPassword and resetPassword.
+// forgotUserPassword: When user clicks on forgot password, frontend sends a POST request to (/forgot-password).
+// It generates a secure reset token, stores hashed token related data in Redis, and sends a password reset link or OTP to the user's email.
+//
+// resetPassword: When user clicks the reset link, frontend sends another POST request to (/reset-password).
+// Backend validates the token and resets the password.
+//
+// If OTP method is used, frontend first opens an OTP verification form.
+// After successful OTP verification, user can reset the password.
 const forgotUserPassword = asyncHandler(async (req, res) => {
   // Forgot Password using OTP. ||  Forgot Password using url. 
   // Use crypto.randomInt() for secure random number generation || crypto.randomBytes(32) for reset token generation
-  // Store hash otp in db. || Store reset token in db
+  // Store hash otp as a redis key. || Store reset token as a redis key
   // Send otp to user email || Send reset link to user email
   const { email } = req.body;
-  const user = await User.findOne({ email }).select("-password -refreshToken");
+
+  const user = await User.findOne({ email }).select("_id email").lean();
   if (user) {
+    // Set a Colldown period using redis key.
+    const cooldownKey = `cooldown:${email}`
+    const cooldownExists = await redisClient.exists(cooldownKey)
+    if (cooldownExists) throw new ApiError(429, "Please wait for 3 minute before requesting again");
+    await redisClient.set(cooldownKey, "1", { EX: 180 })
+
     // URL Method
     // Generate token
     const resetToken = crypto.randomBytes(32).toString("hex");
-    // Hash token and store in db
+    // Hash token 
     const hashedToken = crypto.createHash("sha256").update(resetToken).digest("hex");
 
-    const validity = (10 * 60 * 1000); // In miliseconds
-    user.forgotPasswordToken = hashedToken;
-    user.forgotPasswordExpiry = Date.now() + validity;
-    await user.save({ validateBeforeSave: false })
+    // Deleting existing token key
+    const oldToken = await redisClient.get(`user-reset:${user._id}`);
+    if (oldToken) {
+      await redisClient.del(`reset:${oldToken}`);
+    }
 
-    // NEED TO BE CHANGE
+    // Token Store
+    await redisClient.set(
+      `reset:${hashedToken}`,
+      user._id.toString(),
+      { EX: 600 }
+    )
+
+    // Creating key for delete old token key in case of multiple mail request
+    await redisClient.set(
+      `user-reset:${user._id}`,
+      hashedToken,
+      { EX: 600 }
+    );
+
+    // ****** NEED TO BE CHANGE ******
     const resetUrl = `${process.env.FRONTEND_URL}/reset-password/${resetToken}`;
     // Send Mail
     const message = `
@@ -573,16 +601,25 @@ const forgotUserPassword = asyncHandler(async (req, res) => {
       <p>If the button doesn't work, copy this link:</p>
       <p>${resetUrl}</p>
 
-      <p>This link will expire in ${validity/60000} minutes.</p>
+      <p>This link will expire in 10 minutes.</p>
     </div> `;
-    await sendMail({to: email, subject: "Reset Password", html: message})
+    try {
+      await sendMail({ to: email, subject: "Reset Password", html: message })
+    } catch (error) {
+      await Promise.all([
+        redisClient.del(`reset:${hashedToken}`),
+        redisClient.del(`user-reset:${user._id}`),
+        redisClient.del(cooldownKey)
+      ])
+      throw new ApiError(500, "Failed to send reset email")
+    }
   }
 
   return res.status(200)
     .json(new ApiResponse(
       200,
-      user,
-      "Reset Link send to your registered email address."
+      {},
+      "If an account with this email exists, a reset link has been sent."
     )
     )
 })
@@ -592,23 +629,27 @@ const resetPassword = asyncHandler(async (req, res) => {
   const { newPassword } = req.body;
 
   //Password Validation
-  passwordValidation(newPassword);
+  storngPasswordValidation(newPassword);
 
   const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
 
-  const user = await User.findOne({
-    forgotPasswordToken: hashedToken,
-    forgotPasswordExpiry: { $gt: Date.now() },
-  }).select("-password -refreshToken")
+  const userId = await redisClient.getDel(`reset:${hashedToken}`)
 
-  if (!user) throw new ApiError(400, "Token is invalid or expired");
+  if (!userId) throw new ApiError(400, "Token invalid or expired");
+
+  const user = await User.findById(userId).select("+password +refreshToken")
+
+  if (!user) throw new ApiError(404, "User not found");
 
   user.password = newPassword;
-  user.forgotPasswordToken = undefined;
-  user.forgotPasswordExpiry = undefined;
+  // Logout all existing sessions/devices after password reset
+  user.refreshToken = undefined;
   await user.save();
 
-  return res.status(200).json(new ApiResponse(200, user, "Password Reset Successfully."))
+  // If password reset successfully then delete user-rese key also. 
+  await redisClient.del(`user-reset:${user._id}`);
+
+  return res.status(200).json(new ApiResponse(200, {}, "Password Reset Successfully."))
 })
 
 

@@ -44,14 +44,13 @@ const userSchema = new mongoose.Schema({
   refreshToken: {
     type: String,
   },
-  forgotPasswordToken: {
-    type: String,
-  },
-  forgotPasswordExpiry: {
-    type: Date,
+
+  totalSubscribers: {
+    type: Number,
+    default: 0
   },
 
-  totalViews: {
+  totalSubscribedChannels: {
     type: Number,
     default: 0
   },
@@ -66,12 +65,7 @@ const userSchema = new mongoose.Schema({
     default: 0
   },
 
-  totalSubscribers: {
-    type: Number,
-    default: 0
-  },
-
-  totalSubscribedChannels: {
+  totalViews: {
     type: Number,
     default: 0
   },

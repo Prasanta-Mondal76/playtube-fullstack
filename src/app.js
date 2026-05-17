@@ -69,7 +69,7 @@ app.use("/api/v1/healthCheck", healthCheckRouter);
 import cron from "node-cron"
 import { syncViewsToMongoDB } from "./utils/index.js"
 
-cron.schedule("*/90 * * * * *", async () => {
+cron.schedule("*/5 * * * *", async () => {
 
   console.log("Running views sync cron...")
 

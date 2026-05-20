@@ -3,12 +3,10 @@ import { Like } from "../models/like.model.js"
 import mongoose, { isValidObjectId } from "mongoose"
 import { Video } from "../models/video.model.js"
 import { Comment } from "../models/comment.model.js"
-import { Tweet } from "../models/tweet.model.js"
-
 
 const toggleLike = async (modelId, fieldName, userId, model) => {
 
-  const allowedFields = ["video", "comment", "tweet"]
+  const allowedFields = ["video", "comment"]
   if (!allowedFields.includes(fieldName)) throw new ApiError(400, "Invalid like field type")
 
   if (!isValidObjectId(modelId)) throw new ApiError(400, `Invalid ${fieldName} ID.`)
@@ -113,20 +111,6 @@ const toggleCommentLike = asyncHandler(async (req, res) => {
   ))
 })
 
-const toggleTweetLike = asyncHandler(async (req, res) => {
-  const { tweetId } = req.params
-  if (!req.user?._id) {
-    throw new ApiError(401, "Unauthenticated.")
-  }
-
-  const result = await toggleLike(tweetId, "tweet", req.user._id, Tweet)
-
-  return res.status(200).json(new ApiResponse(
-    200,
-    result,
-    result.liked ? "Tweet liked." : "Tweet unliked."
-  ))
-})
 
 const getLikedVideos = asyncHandler(async (req, res) => {
   if (!req.user?._id) {
@@ -155,6 +139,5 @@ const getLikedVideos = asyncHandler(async (req, res) => {
 export {
   toggleVideoLike,
   toggleCommentLike,
-  toggleTweetLike,
   getLikedVideos
 }

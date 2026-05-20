@@ -33,11 +33,12 @@ const syncViewsToMongoDB = async () => {
       )
 
       // Update MongoDB User Model
+      const delta = Math.max(views - oldVid.views, 0)
       await User.findByIdAndUpdate(
         oldVid.owner,
         {
           $inc: {
-            totalViews: (views - oldVid.views)
+            totalViews: delta
           }
         }
       )

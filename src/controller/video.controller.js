@@ -15,6 +15,7 @@ import { Playlist } from "../models/playlist.model.js";
 
 const publishAVideo = asyncHandler(async (req, res) => {
   try {
+    const startTime = Date.now()
     const { title, description, isPublished } = req.body
 
     if (!req.user?._id) throw new ApiError(400, "Please login first.")
@@ -56,7 +57,15 @@ const publishAVideo = asyncHandler(async (req, res) => {
         }
       })
     }
-    return res.status(201).json(new ApiResponse(201, video, "Video Uploaded Successfully."))
+
+    return res.status(201).json(new ApiResponse(
+      201,
+      {
+        video,
+        responseTime: (Date.now() - startTime)
+      },
+      "Video Uploaded Successfully."
+    ))
   } catch (error) {
     deleteLocalTempFiles(req);
     throw error;
@@ -140,7 +149,7 @@ const getAllVideos = asyncHandler(async (req, res) => {
     const lastItem = videos[videos.length - 1];
 
     nextCursor = {
-      lastValue: lastItem[sortBy],
+      lastValue: lastItem.title,
       lastId: lastItem._id
     };
   }
@@ -256,6 +265,8 @@ const togglePublishStatus = asyncHandler(async (req, res) => {
 
 
 const deleteVideo = asyncHandler(async (req, res) => {
+  const startTime = Date.now()
+
   const { videoId } = req.params
   if (!mongoose.Types.ObjectId.isValid(videoId)) {
     throw new ApiError(400, "Invalid Video ID");
@@ -309,9 +320,9 @@ const deleteVideo = asyncHandler(async (req, res) => {
 
       // Delete video from all playlist
       Playlist.updateMany(
-        { videos: videoId},
+        { videos: videoId },
         {
-          $pull:{ videos: videoId}
+          $pull: { videos: videoId }
         },
         { session }
       )
@@ -323,7 +334,15 @@ const deleteVideo = asyncHandler(async (req, res) => {
       deleteFromCloudinary(video.videoFile),
       deleteFromCloudinary(video.thumbnail)
     ])
-    return res.status(200).json(new ApiResponse(200, video, "Video deleted successfully."))
+
+    return res.status(200).json(new ApiResponse(
+      200,
+      {
+        video,
+        responseTime: (Date.now() - startTime)
+      },
+      "Video deleted successfully."
+    ))
   }
   catch (error) {
     await session.abortTransaction()
@@ -430,6 +449,99 @@ const recordVideoView = asyncHandler(async (req, res) => {
   ))
 })
 
+
+const getChannelVideos = asyncHandler(async (req, res) => {
+  let { limit = 30, sortBy = "_id", sortType = "desc", lastValue, lastId } = req.query;
+  let { channelId } = req.params
+  if(!isValidObjectId(channelId)) throw new ApiError(400, "Invalid Channel Id.")
+
+  limit = parseInt(limit);
+  const sortOrder = sortType === "asc" ? 1 : -1;
+
+  const allowedFields = ["_id", "title", "duration", "createdAt"];
+  if (!allowedFields.includes(sortBy)) {
+    sortBy = "_id";
+  }
+
+  // Step 1: Query build karo
+  let parsedLastId = null;
+
+  if (lastId && mongoose.Types.ObjectId.isValid(lastId)) {
+    parsedLastId = new mongoose.Types.ObjectId(lastId);
+  }
+  // type conversion
+  if (sortBy === "_id" && parsedLastId) {
+    lastValue = parsedLastId;
+  }
+
+  if (sortBy === "duration" && lastValue !== undefined) {
+    lastValue = Number(lastValue);
+  }
+
+  if (sortBy === "createdAt" && lastValue) {
+    lastValue = new Date(lastValue);
+  }
+
+
+  let query = {};
+  if(req.user?._id?.equals(channelId)) {
+    query.owner = req.user._id
+  }
+  else{
+    query.owner = channelId
+    query.isPublished = true
+  }
+
+  if (sortBy === "_id") {
+      // Sirf _id pe sort — simple cursor, $or ki zaroorat nahi
+      if (parsedLastId) {
+        query = { _id: sortOrder === 1 ? { $gt: parsedLastId } : { $lt: parsedLastId } };
+      }
+    } else {
+      //  parsedLastId ke saath lastValue DONO check karo
+      if (lastValue !== undefined && lastValue !== null && parsedLastId) {
+        query = {
+          $or: [
+            { [sortBy]: sortOrder === 1 ? { $gt: lastValue } : { $lt: lastValue } },
+            {
+              [sortBy]: lastValue,
+              _id: sortOrder === 1 ? { $gt: parsedLastId } : { $lt: parsedLastId }
+            }
+          ]
+        };
+      }
+    }
+
+  // Step 2: DB call
+  const videos = await Video.find(query)
+    .sort({ [sortBy]: sortOrder, _id: sortOrder })
+    .limit(limit);
+
+  // Step 3: next cursor nikalo
+  let nextCursor = null;
+
+  if (videos.length === limit) {
+    const lastItem = videos[videos.length - 1];
+
+    nextCursor = {
+      lastValue: lastItem.title,
+      lastId: lastItem._id
+    };
+  }
+
+  // Step 4: response
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        videos,
+        nextCursor
+      },
+      `${videos.length} videos fetched successfully`
+    )
+  );
+})
+
 export {
   publishAVideo,
   getAllVideos,
@@ -438,4 +550,5 @@ export {
   deleteVideo,
   getVideoById,
   recordVideoView,
+  getChannelVideos
 }

@@ -48,7 +48,7 @@ Note: for deleting a video from cloudinary you have to pass 'resource_type'.
 const deleteFromCloudinary = async (url) => {
   try {
     if(!url) return null;
-    const regex = /\/([^\/]+)\/upload\/v\d+\/(.+)\.[a-zA-Z]+$/
+    const regex = /\/([^\/]+)\/upload\/v\d+\/(.+)\.[a-zA-Z0-9]+$/
     const match = url.match(regex); // match[1] = resource_type. match[2] = public_id
 
     const deletedResponse = await cloudinary.uploader.destroy(match[2], {resource_type: match[1], invalidate: true})

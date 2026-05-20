@@ -1,16 +1,35 @@
-import { ApiError, ApiResponse, asyncHandler, deleteFromCloudinary, uploadOnCloudinary, sendMail, deleteLocalTempFiles } from "../utils/index.js"
+import {
+  ApiError,
+  ApiResponse,
+  asyncHandler,
+  deleteFromCloudinary,
+  uploadOnCloudinary,
+  sendMail,
+  deleteLocalTempFiles,
+  registrationSuccessMail,
+  resetLinkMail,
+  accountDeletionConfirmMail,
+  accountDeletionSuccessMail,
+
+} from "../utils/index.js"
 import { User } from "../models/user.model.js";
 import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
-import crypto from "crypto";
+import crypto from "node:crypto";
 import redisClient from "../db/redis.js"
+import { Video } from "../models/video.model.js";
+import { Comment } from "../models/comment.model.js";
+import { Like } from "../models/like.model.js";
+import { Playlist } from "../models/playlist.model.js";
+import { Subscription } from "../models/subscription.model.js"
+
 
 
 const checkNameAndEmailFormat = (fullName, email) => {
   const trimFullName = fullName?.trim()
   const trimEmail = email?.trim()
   if (trimFullName) {
-    if (!trimFullName.includes(" ")) {
+    if (trimFullName.split(" ").filter(Boolean).length < 2) {
       throw new ApiError(400, "Please enter full name (first and last name)")
     }
   }
@@ -25,7 +44,7 @@ const checkNameAndEmailFormat = (fullName, email) => {
   return { trimFullName, trimEmail };
 }
 
-const storngPasswordValidation = (pass, len = 8) => {
+const storngPasswordValidation = (pass, len = 6) => {
   // const regex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[@$!%*?&])\S{8,}$/;
   const regex = new RegExp(`^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[^A-Za-z0-9]).{${len},}$`)
   if (!regex.test(pass)) throw new ApiError(400, `Password must be >=${len} and contains uppercase. lowercase, numbers and special characters.`)
@@ -34,6 +53,8 @@ const storngPasswordValidation = (pass, len = 8) => {
 
 // Register User 
 const registerUser = asyncHandler(async (req, res) => {
+  let avatarImage
+  let coverImage
   try {
     // Get user details from frontend
     // Validation of details | All details are correct or not, email format, any required fild is empty or not
@@ -46,21 +67,32 @@ const registerUser = asyncHandler(async (req, res) => {
     // return response 
 
     // Get User Details
-    const { fullName, username, password, email, avatar, coverImage } = req.body
+    const { fullName, username, password, email } = req.body
     // console.log("Email: ",email);
     // console.log("Password: ",password);
     // console.log("Avatar: ",avatar);
+    // console.log("CoverImage: ",coverImage);
 
     //Validation of details
-    if ([fullName, username, password, email, avatar].some((item) => item === "")) {
+    if ([fullName, username, password, email].some((item) => !item?.trim())) {
       throw new ApiError(400, "Required fields can't be empty.")
+    }
+
+    // Checking for images , Checking for avatar
+    // console.log("-------------------------------Multer req.body --------------------------------- \n ",req.body);
+    // console.log("-------------------------------Multer req.files --------------------------------- \n ",req.files);
+    const avatarLocalPath = req.files?.avatar?.[0]?.path;
+    const coverImageLocalPath = req.files?.coverImage?.[0]?.path;
+    //checking required image file avatar
+    if (!avatarLocalPath) {
+      throw new ApiError(400, "Avatar image is required.")
     }
 
     // fullName and email validation
     const { trimFullName, trimEmail } = checkNameAndEmailFormat(fullName, email);
 
     // Strong Password Validation. Second perameter is the minimum length of the password
-    passwordValidation(password, 6);
+    storngPasswordValidation(password, 6);
 
     //Checking User already exists or not
     const isExists = await User.findOne({
@@ -71,29 +103,16 @@ const registerUser = asyncHandler(async (req, res) => {
     })
 
 
-    // Checking for images , Checking for avatar
-    // console.log("-------------------------------Multer req.body --------------------------------- \n ",req.body);
-    // console.log("-------------------------------Multer req.files --------------------------------- \n ",req.files);
-    const avatarLocalPath = req.files?.avatar?.[0]?.path;
-    const coverImageLocalPath = req.files?.coverImage?.[0]?.path;
 
     // If email or username exists remove the files from local storge.
     if (isExists) {
-      fs.unlinkSync(avatarLocalPath)
-      fs.unlinkSync(coverImageLocalPath)
+      deleteLocalTempFiles(req)
       throw new ApiError(409, "Username or Email already exists. Please login.");
     }
 
-    //checking required image file avatar
-    if (!avatarLocalPath) {
-      deleteLocalTempFiles(req) //If avatar image is not present then remove all files from temp.
-      throw new ApiError(400, "Avatar image is required.")
-    }
-
-
     // Upload to cloudinary
-    const avatarImage = await uploadOnCloudinary(avatarLocalPath);
-    const coverImages = await uploadOnCloudinary(coverImageLocalPath);
+    avatarImage = await uploadOnCloudinary(avatarLocalPath);
+    coverImage = await uploadOnCloudinary(coverImageLocalPath);
     //Checking requird fild avatar
     if (!avatarImage) throw new ApiError(400, "Avatar file is empty.");
 
@@ -103,20 +122,39 @@ const registerUser = asyncHandler(async (req, res) => {
       email: trimEmail,
       fullName: trimFullName,
       avatar: avatarImage.url,
-      coverImage: coverImages?.url || "",
+      coverImage: coverImage?.url || "",
       password,
     })
 
-    // Removed Password and RefreshToken field | User.findById(user._id) it find the user with the _id which db automatically add. ".select()" select all fields of user. "-password -refreshToken" means except this 2 select all others field.
-    const createdUser = await User.findById(user._id).select(" -password -refreshToken");
+    // Convert mongoose document to plain object
+    const createdUser = user?.toObject()
+    // Removed Password and RefreshToken field 
+    delete createdUser.password
+    delete createdUser.refreshToken
 
-    // Check user creation | Checking the entry is successfully registered in DB or not
-    if (!createdUser) throw new ApiError(500, "User Registration Faild.");
+    // Send a success mail
+    await sendMail({
+      to: createdUser.email,
+      subject: "Registration Successfull",
+      html: registrationSuccessMail(
+        createdUser.fullName,
+        createdUser.username,
+        createdUser.email
+      )
+    })
 
-    return res.status(201).json(new ApiResponse(200, createdUser, "User Registration Successfull.",))
+    return res.status(201).json(new ApiResponse(201, createdUser, "User Registration Successfull.",))
   } catch (error) {
-    deleteLocalTempFiles(req);
-    throw new ApiError(error.statusCode, error.message)
+    deleteLocalTempFiles(req); // If anything goes wrong , remove temp files.
+    if (avatarImage?.url) await deleteFromCloudinary(avatarImage.url)
+    if (coverImage?.url) await deleteFromCloudinary(coverImage.url)
+    if (error.code === 11000) {
+      throw new ApiError(409, "Username or Email already exists.")
+    }
+    throw new ApiError(
+      error.statusCode || 500,
+      error.message || "Something went wrong"
+    );
   }
 
 })
@@ -127,12 +165,12 @@ const generateAccessAndRefreshToken = async (userId) => {
   try {
     const user = await User.findById(userId)
     // If password is correct then generate accessToken and refreshToken
-    const accessToken = await user.generateAccessToken();
-    const refreshToken = await user.generateRefreshToken();
+    const accessToken = user.generateAccessToken();
+    const refreshToken = user.generateRefreshToken();
 
     // Save refreshToken in DB
     user.refreshToken = refreshToken;
-    await user.save({ validateBeforeSave: false });
+    await user.save();
 
     return { accessToken, refreshToken };
   } catch (error) {
@@ -143,7 +181,8 @@ const generateAccessAndRefreshToken = async (userId) => {
 // Secure Options, helps while we save a cookie
 const options = {
   httpOnly: true,
-  secure: false
+  secure: process.env.NODE_ENV === "production",
+  sameSite: "strict"
 }
 
 // Login User
@@ -184,11 +223,12 @@ const loginUser = asyncHandler(async (req, res) => {
   // const loggedInUser = User.findById(user._id).select("-password -refreshToken");
 
   // Method 2: By copying user object.
-  const loggedInUser = user.toObject(); // Shallow Copy
-  delete loggedInUser.password;
-  delete loggedInUser.refreshToken;
+  const userData = user.toObject(); // Shallow Copy
+  delete userData.password;
+  delete userData.refreshToken;
+  delete userData.forgotPasswordToken;
+  delete userData.forgotPasswordExpiry;
 
-  console.log("User ", loggedInUser.username, " Login Successfull.")
   // Return response (accessToken and user details except user password and refreshToken details)
   return res.status(200)
     .cookie("accessToken", accessToken, options)
@@ -198,9 +238,8 @@ const loginUser = asyncHandler(async (req, res) => {
         200,
         {
           user: {
-            loggedInUser,
-            accessToken,
-            refreshToken
+            userData,
+            accessToken
           }
         },
         "User logged in successfully."
@@ -214,11 +253,11 @@ const logoutUser = asyncHandler(async (req, res) => {
   // To logout a user we need reference of the user and that's why we create a custom middleware name: auth.middleert.Js
 
   // Find user and remove refreshToken field from model. So that user have no longer access of login.
-  await User.findByIdAndUpdate(
+  const logOutDetails = await User.findByIdAndUpdate(
     req.user._id,
     {
-      $set: {
-        refreshToken: null
+      $unset: {
+        refreshToken: 1
       }
     }
   );
@@ -228,7 +267,7 @@ const logoutUser = asyncHandler(async (req, res) => {
   res.status(200)
     .clearCookie("accessToken", options)
     .clearCookie("refreshToken", options)
-    .json(new ApiResponse(200, {}, "Logged Out."))
+    .json(new ApiResponse(200, { name: logOutDetails.email }, "Logged Out."))
 
 })
 
@@ -239,22 +278,21 @@ const renewAccessRefreshToken = asyncHandler(async (req, res) => {
   // console.log("Body => ",req.body);
 
   // RefreshToken Save in cookies.[req.cookies.refreshToken] || If the request comming form web app then it store in req.body. 
-  const encodedRfToken = req.cookies.refreshToken || req.body.refreshToken;
+  const encodedRfToken = req.cookies.refreshToken || req.header("Authorization")?.replace("Bearer ", "");
 
   if (!encodedRfToken) throw new ApiError(401, "Unauthorized request.")
 
   try {
     // Decode encoded refreshToken.
-    const decodedRfToken = jwt.verify(encodedRfToken, process.env.REFRESH_TOKEN_SECRET); // Ye "_id" return karega object form me. Because: While generating refreshToken we use "_id: this._id" payload.
+    const userId = jwt.verify(encodedRfToken, process.env.REFRESH_TOKEN_SECRET); // Ye "_id" return karega object form me. Because: While generating refreshToken we use "_id: this._id" payload.
 
-    const actualUserObject = await User.findById(decodedRfToken._id);
+    const user = await User.findById(userId._id);
 
-    if (!actualUserObject) throw new ApiError(401, "Invalid Refresh Token.")
+    if (!user) throw new ApiError(401, "Invalid Refresh Token.")
 
-    if (encodedRfToken !== actualUserObject.refreshToken) throw new ApiError(401, "Refresh token is expired or used.")
+    if (encodedRfToken !== user.refreshToken) throw new ApiError(401, "Refresh token is expired or used.")
 
-    const { accessToken, refreshToken } = await generateAccessAndRefreshToken(actualUserObject._id)
-
+    const { accessToken, refreshToken } = await generateAccessAndRefreshToken(user._id)
 
     res.status(200)
       .cookie("accessToken", accessToken, options)
@@ -263,13 +301,12 @@ const renewAccessRefreshToken = asyncHandler(async (req, res) => {
         200,
         {
           accessToken,
-          refreshToken
         },
         "Access and RefreshToken Renewed Successfully."
       ))
 
   } catch (error) {
-    throw new ApiError(401, error?.message || "Invalid Refresh Token");
+    throw new ApiError(401, "Invalid or expired refresh token.");
   }
 
 });
@@ -277,7 +314,6 @@ const renewAccessRefreshToken = asyncHandler(async (req, res) => {
 
 // Change Password
 const changeCurrentPassword = asyncHandler(async (req, res) => {
-  console.log("Change Password res.body => ", req.body);
 
   const { oldPassword, newPassword } = req.body;
 
@@ -285,10 +321,8 @@ const changeCurrentPassword = asyncHandler(async (req, res) => {
 
   if (oldPassword === newPassword) throw new ApiError(400, "Unchanged Password.")
 
-  console.log("Verify user details:(without password and refreshtoken) ", req.user);
-
   // Strong passworc validation
-  passwordValidation(newPassword, 6);
+  storngPasswordValidation(newPassword);
 
   const currentUser = await User.findById(req.user._id);
 
@@ -298,7 +332,7 @@ const changeCurrentPassword = asyncHandler(async (req, res) => {
 
   currentUser.password = newPassword;
   await currentUser.save({ validateBeforeSave: false });
-  console.log("User ", currentUser.username, " Password changed form ", oldPassword, " to ", newPassword)
+  
   res.status(200)
     .json(new ApiResponse(
       200,
@@ -325,7 +359,7 @@ const updateData = asyncHandler(async (req, res) => {
 
   if (!(fullName || email)) throw new ApiError(400, "Please provide at least one field to update");
 
-  const user = await User.findById(req.user._id)
+  const user = await User.findById(req.user._id).select("-refreshToken -password")
 
   if (!user) {
     throw new ApiError(404, "User not found");
@@ -338,7 +372,6 @@ const updateData = asyncHandler(async (req, res) => {
   await user.save({ validateBeforeSave: false })
 
 
-  console.log("Info updated.")
   return res.status(200)
     .json(new ApiResponse(
       200,
@@ -351,7 +384,7 @@ const updateData = asyncHandler(async (req, res) => {
 // File update utility
 const updateFiles = async (file, id) => {
 
-  console.log("File ==> ", file);
+  // console.log("File ==> ", file);
 
   const localFilePath = file?.path;
   const updateFieldName = file?.fieldname;
@@ -361,8 +394,6 @@ const updateFiles = async (file, id) => {
   const uploadedFile = await uploadOnCloudinary(localFilePath)
 
   if (!uploadedFile.url) throw new ApiError(400, "Error in uploading process.")
-
-  console.log("Fild Name: ", updateFieldName)
 
   const user = await User.findById(id).select("-password -refreshToken")
 
@@ -402,75 +433,20 @@ const updateCoverImage = asyncHandler(async (req, res) => {
 })
 
 // User channel details 
-const getUserChannelDetails = asyncHandler(async (req, res) => {
+const getOtherChannelDetails = asyncHandler(async (req, res) => {
   console.log("User Channel Req: => ", req.params)
   const { username } = req.params;
 
-  if (!username?.length) throw new ApiError(404, "Username Not FOund.")
+  if (!username) throw new ApiError(404, "Username not found.")
 
-  const user = await User.aggregate([
-    {
-      $match: {
-        username: username.trim().toLowerCase()
-      }
-    },
-    {
-      $lookup: {
-        from: "subscriptions",
-        localField: "_id",
-        foreignField: "subscriber",
-        as: "subscribers"
-      }
-    },
-    {
-      $lookup: {
-        from: "subscriptions",
-        localField: "_id",
-        foreignField: "channel",
-        as: "subscribed"
-      }
-    },
-    {
-      $addFields: {
-        subscribersCount: {
-          $size: "$subscribers"
-        },
-        subscribedCount: {
-          $size: "$subscribed"
-        },
-        isSubscribed: {
-          $cond: {
-            if: {
-              $in: [req.user?._id, "$subscribers.subscriber"]
-            },
-            then: true,
-            else: false
-          }
-        }
-      }
-    },
-    {
-      $project: {
-        username: 1,
-        email: 1,
-        fullName: 1,
-        avatar: 1,
-        coverImage: 1,
-        subscribersCount: 1,
-        subscribedCount: 1,
-        isSubscribed: 1,
-      }
-    }
-  ])
+  const user = await User.findOne({ username }).select("-password -refreshToken -watchHistory").lean()
 
-  if (!user?.length) throw new ApiError(404, "User doesn't exists.")
-
-  console.log("User '", user[0].username, "' Details: ", user);
+  if (!user) throw new ApiError(404, "User doesn't exists.")
 
   return res.status(200)
     .json(new ApiResponse(
       200,
-      user[0],
+      user,
       "User Details Fatched Successfully."
     ))
 })
@@ -551,7 +527,7 @@ const forgotUserPassword = asyncHandler(async (req, res) => {
   // Send otp to user email || Send reset link to user email
   const { email } = req.body;
 
-  const user = await User.findOne({ email }).select("_id email").lean();
+  const user = await User.findOne({ email }).select("_id email fullName").lean();
   if (user) {
     // Set a Colldown period using redis key.
     const cooldownKey = `cooldown:${email}`
@@ -588,23 +564,8 @@ const forgotUserPassword = asyncHandler(async (req, res) => {
     // ****** NEED TO BE CHANGE ******
     const resetUrl = `${process.env.FRONTEND_URL}/reset-password/${resetToken}`;
     // Send Mail
-    const message = `
-    <div style="font-family: Arial, sans-serif;">
-      <h2>Password Reset Request</h2>
-      <p>Click the button below to reset your password:</p>
-
-      <a href="${resetUrl}" 
-        style="display:inline-block;padding:10px 20px;background:#007bff;color:#fff;text-decoration:none;border-radius:5px;">
-        Reset Password
-      </a>
-
-      <p>If the button doesn't work, copy this link:</p>
-      <p>${resetUrl}</p>
-
-      <p>This link will expire in 10 minutes.</p>
-    </div> `;
     try {
-      await sendMail({ to: email, subject: "Reset Password", html: message })
+      await sendMail({ to: email, subject: "Reset Password", html: resetLinkMail(user.fullName, resetUrl) })
     } catch (error) {
       await Promise.all([
         redisClient.del(`reset:${hashedToken}`),
@@ -653,6 +614,201 @@ const resetPassword = asyncHandler(async (req, res) => {
 })
 
 
+// Delete User Account : This Process include 3 steps. Request - Confirm/Cancel
+// Request for Delete
+const requestDeleteAccount = asyncHandler(async (req, res) => {
+  const userId = req.user._id;
+  const email = req.user.email;
+
+  if (!userId || !email) throw new ApiError(401, "Access Decline.")
+
+  // Cooldown Periods of 10 min
+  const cooldownKey = `delete-cooldown:${userId}`;
+  const cooldownExists = await redisClient.exists(cooldownKey);
+  if (cooldownExists) throw new ApiError(429, "Please wait 10 minutes before requesting again.");
+  await redisClient.set(cooldownKey, "1", { EX: 600 }); // 10 min cooldown
+
+  // Generate account deletion token
+  const deleteToken = crypto.randomBytes(32).toString("hex");
+  const hashedToken = crypto.createHash("sha256").update(deleteToken).digest("hex");
+
+  // Store token in Redis — 1 hour valid
+  await redisClient.set(
+    `delete-account:${hashedToken}`,
+    userId.toString(),
+    { EX: 3600 }
+  );
+
+  const confirmUrl = `${process.env.FRONTEND_URL}/delete-account/confirm/${deleteToken}`;
+  const cancelUrl = `${process.env.FRONTEND_URL}/delete-account/cancel/${deleteToken}`;
+
+  await sendMail({
+    to: email,
+    subject: "Confirm Account Deletion — PlayTube",
+    html: accountDeletionConfirmMail(req.user.fullName, confirmUrl, cancelUrl)
+  });
+
+  return res.status(200).json(new ApiResponse(
+    200,
+    {},
+    "A confirmation email has been sent. Please check your inbox."
+  ));
+});
+
+// Cancel Request 
+const cancelDeleteAccount = asyncHandler(async (req, res) => {
+  const { token } = req.params;
+
+  const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
+
+  // Delete token from Redis.
+  const deleted = await redisClient.getDel(`delete-account:${hashedToken}`);
+
+  if (!deleted) throw new ApiError(400, "Link is invalid or already expired.");
+
+  return res.status(200).json(new ApiResponse(
+    200,
+    {},
+    "Account deletion cancelled. Your account is safe."
+  ));
+});
+
+// Permanent delete
+const confirmDeleteAccount = asyncHandler(async (req, res) => {
+  const { token } = req.params;
+
+  // Validate Token 
+  const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
+  const userId = await redisClient.getDel(`delete-account:${hashedToken}`);
+
+  if (!userId) throw new ApiError(400, "Confirmation link is invalid or expired.");
+
+  // Clean Cooldown Key
+  await redisClient.del(`delete-cooldown:${userId}`);
+
+  // ---------------------------------------------------
+  // STEP 1: Pre-transaction data fetch
+  // Transaction ke andar find karna expensive hota hai.
+  // Isliye pehle saara data fetch karo jo baad mein Cloudinary delete aur cascading ke liye chahiye.
+  // ---------------------------------------------------
+
+  // Fetch all videos of user
+  const videos = await Video.find(
+    { owner: userId },
+    "_id videoFile thumbnail"
+  ).lean();
+
+  const videoIds = videos.map((v) => v._id);
+
+  // Fetch all comments of all Videos (We need commentIds for Like deletion)
+  const comments = await Comment.find(
+    { video: { $in: videoIds } },
+    "_id"
+  ).lean();
+
+  const commentIds = comments.map((c) => c._id);
+
+  // ---------------------------------------------------
+  // STEP 2: MongoDB Transaction — DB operations
+  // ---------------------------------------------------
+  const session = await mongoose.startSession();
+  try {
+    session.startTransaction();
+
+    // 1. Delete User
+    const deletedUser = await User.findOneAndDelete(
+      { _id: userId },
+      { session }
+    );
+    if (!deletedUser) throw new ApiError(404, "User not found.");
+
+    await Promise.all([
+      // 2. Delete all videos of User
+      Video.deleteMany({ owner: userId }, { session }),
+
+      // 3. Delete All comments of All Videos
+      Comment.deleteMany({ video: { $in: videoIds } }, { session }),
+
+      // 4. Delete all likes of all deleted videos
+      Like.deleteMany({ video: { $in: videoIds } }, { session }),
+
+      // 5. Delete all likes of all deleted comments
+      Like.deleteMany({ comment: { $in: commentIds } }, { session }),
+
+      // 6. Delete all playlists created by user
+      Playlist.deleteMany({ owner: userId }, { session }),
+
+      // 7. Remove video IDs from others users playlist, It prevent orphan references .
+      Playlist.updateMany(
+        { videos: { $in: videoIds } },
+        { $pull: { videos: { $in: videoIds } } },
+        { session }
+      ),
+
+      // 8. Delete user from all subscription.
+      Subscription.deleteMany({ subscriber: userId }, { session }),
+
+      // 9. Delete all subscribers of user.
+      Subscription.deleteMany({ channel: userId }, { session }),
+    ]);
+
+    await session.commitTransaction();
+
+    // ---------------------------------------------------
+    // STEP 3: Cloudinary Cleanup — Transaction ke BAAD
+    // Agar transaction fail ho toh Cloudinary delete nahi
+    // hoga. Agar Cloudinary fail ho toh DB already clean hai.
+    // Ye tumhara existing pattern hai — isko follow kiya.
+    // ---------------------------------------------------
+    const cloudinaryDeletionPromises = [
+      ...videos.flatMap(video => [
+        video.videoFile
+          ? deleteFromCloudinary(video.videoFile)
+          : null,
+
+        video.thumbnail
+          ? deleteFromCloudinary(video.thumbnail)
+          : null,
+      ]),
+
+      deletedUser.avatar
+        ? deleteFromCloudinary(deletedUser.avatar)
+        : null,
+
+      deletedUser.coverImage
+        ? deleteFromCloudinary(deletedUser.coverImage)
+        : null,
+    ].filter(Boolean); // Remove null values 
+
+    // Delete All assets parallelly. 
+    // Promise.allSettled : If a deletion faild , rest of assets deletion process will continue.
+    // Promise.all : If a deletion faild , rest of assets deletion process will Stop.
+    await Promise.allSettled(cloudinaryDeletionPromises);
+
+    // Send a mail of deletion 
+    await sendMail({
+      to: deletedUser.email,
+      subject: "Account Deleted",
+      html: accountDeletionSuccessMail(deletedUser.fullName)
+    })
+
+    // Clear Cookies — user logout 
+    return res
+      .status(200)
+      .clearCookie("accessToken", options)
+      .clearCookie("refreshToken", options)
+      .json(new ApiResponse(200, {}, "Account deleted successfully."));
+
+  } catch (error) {
+    await session.abortTransaction();
+    throw new ApiError(
+      error.statusCode || 500,
+      error.message || "Failed to delete account."
+    );
+  } finally {
+    await session.endSession();
+  }
+});
 
 export {
   registerUser,
@@ -664,8 +820,13 @@ export {
   updateData,
   updateAvatar,
   updateCoverImage,
-  getUserChannelDetails,
+  getOtherChannelDetails,
   getWatchHistory,
   forgotUserPassword,
   resetPassword,
+
+  //Delete Account
+  requestDeleteAccount,
+  cancelDeleteAccount,
+  confirmDeleteAccount
 };

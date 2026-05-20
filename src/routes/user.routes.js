@@ -1,21 +1,24 @@
 import { Router } from "express";
-import 
-{ registerUser, 
-  loginUser, 
-  logoutUser, 
-  renewAccessRefreshToken, 
-  changeCurrentPassword, 
-  getCurrentUser, 
-  updateData,
-  updateAvatar,
-  updateCoverImage,
-  getUserChannelDetails,
-  getWatchHistory,
-  forgotUserPassword,
-  resetPassword,
+import {
+registerUser,
+loginUser,
+logoutUser,
+renewAccessRefreshToken,
+changeCurrentPassword,
+getCurrentUser,
+updateData,
+updateAvatar,
+updateCoverImage,
+getOtherChannelDetails,
+getWatchHistory,
+forgotUserPassword,
+resetPassword,
+requestDeleteAccount,
+cancelDeleteAccount,
+confirmDeleteAccount
 } from "../controller/user.controller.js";
 
-import {upload} from "../middlewares/multer.middleware.js"
+import { upload } from "../middlewares/multer.middleware.js"
 import { verifyJWT } from "../middlewares/auth.middleware.js";
 
 const router = Router();
@@ -53,11 +56,16 @@ router.route("/update-avatar").patch(verifyJWT, upload.single("avatar"), updateA
 router.route("/update-coverImage").patch(verifyJWT, upload.single("coverImage"), updateCoverImage)
 
 // Channel details route
-router.route("/channel/:username").get(verifyJWT, getUserChannelDetails)
+router.route("/channel/:username").get(verifyJWT, getOtherChannelDetails)
 // Watch History route
 router.route("/history").get(verifyJWT, getWatchHistory)
 
 router.route("/forgot-password").post(forgotUserPassword)
 router.route("/reset-password/:token").post(resetPassword)
+
+// Delete Account Routes
+router.route("/delete-account/request").post(verifyJWT, requestDeleteAccount);
+router.route("/delete-account/confirm/:token").delete(confirmDeleteAccount);
+router.route("/delete-account/cancel/:token").delete(cancelDeleteAccount);   
 
 export default router;

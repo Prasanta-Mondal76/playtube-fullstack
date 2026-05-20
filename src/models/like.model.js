@@ -11,10 +11,6 @@ const likeSchema = new mongoose.Schema({
     ref: "Video"
   },
   
-  tweet:{
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "Tweet"
-  },
   
   likedBy:{
     type: mongoose.Schema.Types.ObjectId,
@@ -26,10 +22,10 @@ const likeSchema = new mongoose.Schema({
 
 // Checking there is only one field
 likeSchema.pre("validate", function (next) {
-  const targets = [this.video, this.comment, this.tweet].filter(Boolean)
+  const targets = [this.video, this.comment].filter(Boolean)
 
   if (targets.length !== 1) {
-    return next(new Error("Like must belong to exactly one: video, comment, or tweet"))
+    return next(new Error("Like must belong to exactly one: video or comment"))
   }
 
   next()
@@ -48,10 +44,5 @@ likeSchema.index(
   { unique: true, partialFilterExpression: { comment: { $exists: true } } }
 )
 
-// ✅ Unique per tweet like
-likeSchema.index(
-  { tweet: 1, likedBy: 1 },
-  { unique: true, partialFilterExpression: { tweet: { $exists: true } } }
-)
 
 export const Like = mongoose.model("Like", likeSchema)

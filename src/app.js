@@ -25,7 +25,6 @@ app.use(cookieParser())
 import userRouter from "./routes/user.routes.js"
 import videoRouter from "./routes/video.routes.js"
 import playlistRouter from "./routes/playlist.routes.js"
-import tweetRouter from "./routes/tweet.routes.js"
 import commentRouter from "./routes/comment.routes.js"
 import likeRouter from "./routes/like.routes.js"
 import subscriptionRouter from "./routes/subscription.routes.js"
@@ -44,8 +43,6 @@ app.use("/api/v1/videos", videoRouter);
 // Router declaration for playlist route
 app.use("/api/v1/playlists", playlistRouter);
 
-// Router declaration for tweet route
-app.use("/api/v1/tweets", tweetRouter);
 
 // Router declaration for comments route
 app.use("/api/v1/comments", commentRouter);
